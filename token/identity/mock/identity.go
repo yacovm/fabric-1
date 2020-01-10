@@ -6,7 +6,7 @@ import (
 	"time"
 
 	mspfabric "github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/protos/msp"
+	"github.com/hyperledger/fabric-protos-go/msp"
 	"github.com/hyperledger/fabric/token/identity"
 )
 
