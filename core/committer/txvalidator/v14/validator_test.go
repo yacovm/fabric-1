@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/peer"
 	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp/sw"
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	ctxt "github.com/hyperledger/fabric/common/configtx/test"
 	commonerrors "github.com/hyperledger/fabric/common/errors"
@@ -48,6 +49,13 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/msp/mgmt"
 	msptesttools "github.com/hyperledger/fabric/msp/mgmt/testtools"
+	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric/protos/ledger/rwset"
+	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
+	mb "github.com/hyperledger/fabric/protos/msp"
+	"github.com/hyperledger/fabric/protos/peer"
+	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -107,7 +115,15 @@ func setupLedgerAndValidatorWithV13Capabilities(t *testing.T) (ledger.PeerLedger
 	return setupLedgerAndValidatorWithCapabilities(t, v13Capabilities())
 }
 
+<<<<<<< HEAD
 func setupLedgerAndValidatorWithCapabilities(t *testing.T, c *tmocks.ApplicationCapabilities) (ledger.PeerLedger, txvalidator.Validator, func()) {
+=======
+func setupLedgerAndValidatorWithFabTokenCapabilities(t *testing.T) (ledger.PeerLedger, txvalidator.Validator, func()) {
+	return setupLedgerAndValidatorWithCapabilities(t, fabTokenCapabilities())
+}
+
+func setupLedgerAndValidatorWithCapabilities(t *testing.T, c *mockconfig.MockApplicationCapabilities) (ledger.PeerLedger, txvalidator.Validator, func()) {
+>>>>>>> parent of 7a1fe06e6... FAB-16115 Remove FabToken
 	mspmgr := &mocks2.MSPManager{}
 	idThatSatisfiesPrincipal := &mocks2.Identity{}
 	idThatSatisfiesPrincipal.SatisfiesPrincipalReturns(nil)
@@ -219,6 +235,57 @@ func getEnvWithSigner(ccID string, event []byte, res []byte, sig msp.SigningIden
 	assert.NoError(t, err)
 
 	return tx
+}
+
+func getTokenTx(t *testing.T) *common.Envelope {
+	transactionData := &token.TokenTransaction{
+		Action: &token.TokenTransaction_TokenAction{
+			TokenAction: &token.TokenAction{
+				Data: &token.TokenAction_Issue{
+					Issue: &token.Issue{
+						Outputs: []*token.Token{
+							{Owner: &token.TokenOwner{Raw: []byte("owner-1")}, Type: "TOK1", Quantity: ToHex(111)},
+							{Owner: &token.TokenOwner{Raw: []byte("owner-2")}, Type: "TOK2", Quantity: ToHex(222)},
+						},
+					},
+				},
+			},
+		},
+	}
+	tdBytes, err := proto.Marshal(transactionData)
+	assert.NoError(t, err)
+
+	signerBytes, err := signer.Serialize()
+	assert.NoError(t, err)
+	nonce := []byte{0, 1, 2, 3, 4}
+	txID := protoutil.ComputeTxID(nonce, signerBytes)
+
+	hdr := &common.Header{
+		SignatureHeader: protoutil.MarshalOrPanic(
+			&common.SignatureHeader{
+				Creator: signerBytes,
+				Nonce:   nonce,
+			},
+		),
+		ChannelHeader: protoutil.MarshalOrPanic(
+			&common.ChannelHeader{
+				Type: int32(common.HeaderType_TOKEN_TRANSACTION),
+				TxId: txID,
+			},
+		),
+	}
+
+	// create the payload
+	payl := &common.Payload{Header: hdr, Data: tdBytes}
+	paylBytes, err := protoutil.GetBytesPayload(payl)
+	assert.NoError(t, err)
+
+	// sign the payload
+	sig, err := signer.Sign(paylBytes)
+	assert.NoError(t, err)
+
+	// here's the envelope
+	return &common.Envelope{Payload: paylBytes, Signature: sig}
 }
 
 func putCCInfoWithVSCCAndVer(theLedger ledger.PeerLedger, ccname, vscc, ver string, policy []byte, t *testing.T) {
@@ -1414,6 +1481,64 @@ func validateTxWithStateBasedEndorsement(t *testing.T, l ledger.PeerLedger, v tx
 	err := v.Validate(b)
 
 	return err, b
+}
+
+func TestTokenValidTransaction(t *testing.T) {
+	_, v, cleanup := setupLedgerAndValidatorWithFabTokenCapabilities(t)
+	defer cleanup()
+
+	tx := getTokenTx(t)
+	b := &common.Block{Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
+
+	err := v.Validate(b)
+	assert.NoError(t, err)
+	assertValid(b, t)
+}
+
+func TestTokenCapabilityNotEnabled(t *testing.T) {
+	_, v, cleanup := setupLedgerAndValidatorWithPreV12Capabilities(t)
+	defer cleanup()
+
+	tx := getTokenTx(t)
+	b := &common.Block{Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
+
+	err := v.Validate(b)
+
+	assertion := assert.New(t)
+	// We expect no validation error because we simply mark the tx as invalid
+	assertion.NoError(err)
+
+	// We expect the tx to be invalid because of a duplicate txid
+	txsfltr := lutils.TxValidationFlags(b.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	assertion.True(txsfltr.IsInvalid(0))
+	assertion.True(txsfltr.Flag(0) == peer.TxValidationCode_UNKNOWN_TX_TYPE)
+}
+
+func TestTokenDuplicateTxId(t *testing.T) {
+	theLedger := new(mockLedger)
+	pm := &mocks.Mapper{}
+	validator := txvalidatorv14.NewTxValidator(
+		"",
+		semaphore.New(10),
+		&mocktxvalidator.Support{LedgerVal: theLedger, ACVal: fabTokenCapabilities()},
+		pm,
+	)
+
+	tx := getTokenTx(t)
+	theLedger.On("GetTransactionByID", mock.Anything).Return(&peer.ProcessedTransaction{}, nil)
+
+	b := testutil.NewBlock([]*common.Envelope{tx}, 0, nil)
+
+	err := validator.Validate(b)
+
+	assertion := assert.New(t)
+	// We expect no validation error because we simply mark the tx as invalid
+	assertion.NoError(err)
+
+	// We expect the tx to be invalid because of a duplicate txid
+	txsfltr := lutils.TxValidationFlags(b.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	assertion.True(txsfltr.IsInvalid(0))
+	assertion.True(txsfltr.Flag(0) == peer.TxValidationCode_DUPLICATE_TXID)
 }
 
 // mockLedger structure used to test ledger

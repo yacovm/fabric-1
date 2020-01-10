@@ -9,11 +9,15 @@ package validation
 import (
 	"bytes"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/flogging"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
+	"github.com/hyperledger/fabric/protos/common"
+	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -95,6 +99,7 @@ func validateChannelHeader(cHdr *common.ChannelHeader) error {
 	case common.HeaderType_ENDORSER_TRANSACTION:
 	case common.HeaderType_CONFIG_UPDATE:
 	case common.HeaderType_CONFIG:
+	case common.HeaderType_TOKEN_TRANSACTION:
 	default:
 		return errors.Errorf("invalid header type %s", common.HeaderType(cHdr.Type))
 	}
@@ -244,6 +249,23 @@ func validateEndorserTransaction(data []byte, hdr *common.Header) error {
 	return nil
 }
 
+// validateTokenTransaction validates the payload of a transaction assuming its type is TOKEN_TRANSACTION
+func validateTokenTransaction(data []byte) error {
+	// check for nil argument
+	if data == nil {
+		return errors.New("nil payload data")
+	}
+
+	// verify it contains a TokenTransaction
+	tx := &token.TokenTransaction{}
+	if err := proto.Unmarshal(data, tx); err != nil {
+		return errors.Wrap(err, "error unmarshaling the token Transaction")
+	}
+
+	// further verification will be done by tms verifier at transaction commit path
+	return nil
+}
+
 // ValidateTransaction checks that the transaction envelope is properly formed
 func ValidateTransaction(e *common.Envelope, cryptoProvider bccsp.BCCSP) (*common.Payload, pb.TxValidationCode) {
 	putilsLogger.Debugf("ValidateTransactionEnvelope starts for envelope %p", e)
@@ -312,6 +334,25 @@ func ValidateTransaction(e *common.Envelope, cryptoProvider bccsp.BCCSP) (*commo
 		if err != nil {
 			putilsLogger.Errorf("validateConfigTransaction returns err %s", err)
 			return payload, pb.TxValidationCode_INVALID_CONFIG_TRANSACTION
+		}
+	case common.HeaderType_TOKEN_TRANSACTION:
+		// Verify that the transaction ID has been computed properly.
+		// This check is needed to ensure that the lookup into the ledger
+		// for the same TxID catches duplicates.
+		err = protoutil.CheckTxID(
+			chdr.TxId,
+			shdr.Nonce,
+			shdr.Creator)
+
+		if err != nil {
+			putilsLogger.Errorf("CheckTxID returns err %s", err)
+			return nil, pb.TxValidationCode_BAD_PROPOSAL_TXID
+		}
+
+		err = validateTokenTransaction(payload.Data)
+		if err != nil {
+			putilsLogger.Errorf("validateTokenTransaction returns err %s", err)
+			return payload, pb.TxValidationCode_BAD_PAYLOAD
 		}
 		return payload, pb.TxValidationCode_VALID
 	default:

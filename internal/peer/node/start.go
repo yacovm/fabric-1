@@ -40,6 +40,7 @@ import (
 	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/core/aclmgmt"
+	"github.com/hyperledger/fabric/core/aclmgmt/resources"
 	"github.com/hyperledger/fabric/core/cclifecycle"
 	"github.com/hyperledger/fabric/core/chaincode"
 	"github.com/hyperledger/fabric/core/chaincode/accesscontrol"
@@ -91,7 +92,14 @@ import (
 	"github.com/hyperledger/fabric/internal/peer/version"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/msp/mgmt"
+	"github.com/hyperledger/fabric/protos/common"
+	cb "github.com/hyperledger/fabric/protos/common"
+	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric/token/server"
+	"github.com/hyperledger/fabric/token/tms/manager"
+	"github.com/hyperledger/fabric/token/transaction"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -419,6 +427,11 @@ func serve(args []string) error {
 
 	txProcessors := map[common.HeaderType]ledger.CustomTxProcessor{
 		common.HeaderType_CONFIG: &peer.ConfigTxProcessor{},
+		common.HeaderType_TOKEN_TRANSACTION: &transaction.Processor{
+			TMSManager: &manager.Manager{
+				IdentityDeserializerManager: &manager.FabricIdentityDeserializerManager{},
+			},
+		},
 	}
 
 	peerInstance.LedgerMgr = ledgermgmt.NewLedgerMgr(
@@ -711,6 +724,12 @@ func serve(args []string) error {
 		LocalMSP:               localMSP,
 		Support:                endorserSupport,
 		Metrics:                endorser.NewMetrics(metricsProvider),
+	}
+
+	// register prover grpc service
+	err = registerProverService(peerInstance, peerServer, aclProvider, signingIdentity)
+	if err != nil {
+		return err
 	}
 
 	// deploy system chaincodes
@@ -1199,6 +1218,41 @@ func newOperationsSystem(coreConfig *peer.Config) *operations.System {
 		},
 		Version: metadata.Version,
 	})
+}
+
+func registerProverService(peerInstance *peer.Peer, peerServer *comm.GRPCServer, aclProvider aclmgmt.ACLProvider, signingIdentity msp.SigningIdentity) error {
+	policyChecker := &server.PolicyBasedAccessControl{
+		ACLProvider: aclProvider,
+		ACLResources: &server.ACLResources{
+			IssueTokens:    resources.Token_Issue,
+			TransferTokens: resources.Token_Transfer,
+			ListTokens:     resources.Token_List,
+		},
+	}
+
+	responseMarshaler, err := server.NewResponseMarshaler(signingIdentity)
+	if err != nil {
+		logger.Errorf("Failed to create prover service: %s", err)
+		return err
+	}
+
+	prover := &server.Prover{
+		CapabilityChecker: &server.TokenCapabilityChecker{
+			ChannelConfigGetter: peerInstance,
+		},
+		Marshaler:     responseMarshaler,
+		PolicyChecker: policyChecker,
+		TMSManager: &server.Manager{
+			LedgerManager: &server.PeerLedgerManager{
+				Peer: peerInstance,
+			},
+			TokenOwnerValidatorManager: &server.PeerTokenOwnerValidatorManager{
+				IdentityDeserializerManager: &manager.FabricIdentityDeserializerManager{},
+			},
+		},
+	}
+	token.RegisterProverServer(peerServer.Server(), prover)
+	return nil
 }
 
 func getDockerHostConfig() *docker.HostConfig {
