@@ -67,7 +67,7 @@ var _ = Describe("GRPCClient", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// verify we can create a connection using grpcClient
-			conn, err := grpcClient.NewConnection(endpoint, "")
+			conn, err := grpcClient.NewConnection(endpoint)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(conn).NotTo(BeNil())
 		})
@@ -82,7 +82,7 @@ var _ = Describe("GRPCClient", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// verify we can create a connection using grpcClient
-			conn, err := grpcClient.NewConnection(connConfig.Address, "")
+			conn, err := grpcClient.NewConnection(connConfig.Address)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(conn).NotTo(BeNil())
 		})
@@ -104,7 +104,7 @@ var _ = Describe("GRPCClient", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// verify we can create a connection using grpcClient
-				_, err = grpcClient.NewConnection(connConfig.Address, "")
+				_, err = grpcClient.NewConnection(connConfig.Address)
 				Expect(err.Error()).To(ContainSubstring("connection refused"))
 			})
 		})

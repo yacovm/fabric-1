@@ -4,8 +4,8 @@ package mock
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
+	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/token/client"
 )
 

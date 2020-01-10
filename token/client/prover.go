@@ -71,7 +71,7 @@ func NewProverPeer(config *ClientConfig) (*ProverPeer, error) {
 }
 
 func (pc *ProverPeerClientImpl) CreateProverClient() (*grpc.ClientConn, token.ProverClient, error) {
-	conn, err := pc.GRPCClient.NewConnection(pc.Address, pc.ServerNameOverride)
+	conn, err := pc.GRPCClient.NewConnection(pc.Address)
 	if err != nil {
 		return conn, nil, err
 	}

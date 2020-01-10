@@ -5,7 +5,7 @@ import (
 	sync "sync"
 	time "time"
 
-	common "github.com/hyperledger/fabric/protos/common"
+	common "github.com/hyperledger/fabric-protos-go/common"
 	client "github.com/hyperledger/fabric/token/client"
 )
 

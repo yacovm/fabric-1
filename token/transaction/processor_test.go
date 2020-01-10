@@ -8,7 +8,7 @@ package transaction_test
 import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/core/ledger"
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/token/transaction"
 	"github.com/hyperledger/fabric/token/transaction/mock"

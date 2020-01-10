@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric/protos/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/token/ledger/mock"
 	"github.com/hyperledger/fabric/token/tms/plain"

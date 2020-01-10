@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	common2 "github.com/hyperledger/fabric/protos/common"
+	common2 "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protos/token"
 	. "github.com/hyperledger/fabric/token/cmd"
 	"github.com/stretchr/testify/assert"

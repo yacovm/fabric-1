@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 )
 
 // SimpleChaincode example simple Chaincode implementation

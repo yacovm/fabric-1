@@ -11,7 +11,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/token/client"
 	"github.com/hyperledger/fabric/token/client/mock"

@@ -4,7 +4,7 @@ package mock
 import (
 	sync "sync"
 
-	orderer "github.com/hyperledger/fabric/protos/orderer"
+	orderer "github.com/hyperledger/fabric-protos-go/orderer"
 )
 
 type AtomicBroadcastServer struct {

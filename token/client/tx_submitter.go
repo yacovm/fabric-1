@@ -12,9 +12,9 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/crypto"
-	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protoutil"
 	tk "github.com/hyperledger/fabric/token"
 	"github.com/pkg/errors"

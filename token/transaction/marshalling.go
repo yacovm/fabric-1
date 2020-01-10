@@ -8,8 +8,8 @@ package transaction
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric/protos/common"
-	cb "github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric-protos-go/common"
+	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/hyperledger/fabric/token/identity"

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/token/client"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

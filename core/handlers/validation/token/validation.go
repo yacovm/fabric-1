@@ -8,7 +8,7 @@ package token
 
 import (
 	validation "github.com/hyperledger/fabric/core/handlers/validation/api"
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric-protos-go/common"
 )
 
 type ValidationFactory struct {

@@ -11,11 +11,11 @@ import (
 	"math"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/core/comm"
-	"github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	tk "github.com/hyperledger/fabric/token"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -56,7 +56,7 @@ func NewDeliverClient(config *ConnectionConfig) (DeliverClient, error) {
 		err = errors.WithMessagef(err, "failed to create a GRPCClient to peer %s", config.Address)
 		return nil, err
 	}
-	conn, err := grpcClient.NewConnection(config.Address, config.ServerNameOverride)
+	conn, err := grpcClient.NewConnection(config.Address)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to connect to commit peer %s", config.Address)
 	}
@@ -78,7 +78,7 @@ func (d *deliverClient) NewDeliverFiltered(ctx context.Context, opts ...grpc.Cal
 
 	// create a new connection to the peer
 	var err error
-	d.conn, err = d.grpcClient.NewConnection(d.peerAddr, d.serverNameOverride)
+	d.conn, err = d.grpcClient.NewConnection(d.peerAddr)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to connect to commit peer %s", d.peerAddr)
 	}

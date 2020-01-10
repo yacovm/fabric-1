@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp/factory"
-	"github.com/hyperledger/fabric/protos/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/token/identity"
 	"github.com/hyperledger/fabric/token/ledger"

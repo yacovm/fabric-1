@@ -15,8 +15,6 @@ import (
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/flogging"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
-	"github.com/hyperledger/fabric/protos/common"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
@@ -335,6 +333,7 @@ func ValidateTransaction(e *common.Envelope, cryptoProvider bccsp.BCCSP) (*commo
 			putilsLogger.Errorf("validateConfigTransaction returns err %s", err)
 			return payload, pb.TxValidationCode_INVALID_CONFIG_TRANSACTION
 		}
+		return payload, pb.TxValidationCode_VALID
 	case common.HeaderType_TOKEN_TRANSACTION:
 		// Verify that the transaction ID has been computed properly.
 		// This check is needed to ensure that the lookup into the ledger

@@ -12,9 +12,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/core/comm"
-	"github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
@@ -54,7 +54,7 @@ func NewOrdererClient(config *ConnectionConfig) (OrdererClient, error) {
 		err = errors.WithMessagef(err, "failed to create a GRPCClient to orderer %s", config.Address)
 		return nil, err
 	}
-	conn, err := grpcClient.NewConnection(config.Address, config.ServerNameOverride)
+	conn, err := grpcClient.NewConnection(config.Address)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to connect to orderer %s", config.Address)
 	}
@@ -76,7 +76,7 @@ func (oc *ordererClient) NewBroadcast(ctx context.Context, opts ...grpc.CallOpti
 	}
 
 	// error occurred with the existing connection, so create a new connection to orderer
-	oc.conn, err = oc.grpcClient.NewConnection(oc.ordererAddr, oc.serverNameOverride)
+	oc.conn, err = oc.grpcClient.NewConnection(oc.ordererAddr)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to connect to orderer %s", oc.ordererAddr)
 	}

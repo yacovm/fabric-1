@@ -16,7 +16,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protos/token"
 	tclient "github.com/hyperledger/fabric/token/client"
 	"github.com/pkg/errors"
