@@ -44,7 +44,7 @@ func (c *Components) Peer() string {
 }
 
 func (c *Components) Token() string {
-	return c.build("github.com/hyperledger/fabric/cmd/token")
+	return c.Build("github.com/hyperledger/fabric/cmd/token")
 }
 
 func (c *Components) Cleanup() {}
