@@ -33,7 +33,7 @@ func (t *SimplePrivateDataCC) Invoke(stub shim.ChaincodeStubInterface) pb.Respon
 	switch function {
 	case "put":
 		for i := 0; i < len(args); i = i + 3 {
-			err := stub.PutPrivateData(args[0], args[1], []byte(args[2]))
+			err := stub.PutPrivateData(args[i], args[i+1], []byte(args[i+2]))
 			if err != nil {
 				return shim.Error(err.Error())
 			}

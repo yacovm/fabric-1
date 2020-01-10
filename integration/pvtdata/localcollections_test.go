@@ -106,7 +106,7 @@ var _ bool = FDescribe("LocalCollections", func() {
 				Label:             "pvtdatacc-label",
 				SignaturePolicy:   `OR ('Org1MSP.member','Org2MSP.member', 'Org3MSP.member')`,
 				Sequence:          "1",
-				CollectionsConfig: filepath.Join("testdata", "collection_configs", "short_btl_config.json"),
+				CollectionsConfig: filepath.Join("testdata", "collection_configs", "collections_config1.json"),
 			},
 		}
 		deployChaincode(network, orderer, cc)
@@ -233,6 +233,46 @@ var _ bool = FDescribe("LocalCollections", func() {
 
 		By("expecting a failed query return from peer0.Org1")
 		query(network, network.Peer("Org1", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","~local","foo"]}`, 1, true, "private data matching public hash version is not available")
+
+		By("doing a put on peer0.Org1 with multiple collections")
+		sess, err = network.PeerUserSession(network.Peer("Org1", "peer0"), "User1", commands.ChaincodeInvoke{
+			ChannelID: "testchannel",
+			Orderer:   network.OrdererAddress(orderer, nwo.ListenPort),
+			Name:      "pvtdatacc",
+			Ctor:      `{"Args":["put","~local","foo","bar6","collectionMarbles","foo","bar7"]}`,
+			PeerAddresses: []string{
+				network.PeerAddress(network.Peer("Org1", "peer0"), nwo.ListenPort),
+			},
+
+			WaitForEvent: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(sess, network.EventuallyTimeout).Should(gexec.Exit(0))
+		Expect(sess.Err).To(gbytes.Say("Chaincode invoke successful."))
+
+		By("expecting a successful query return from peer0.Org1")
+		query(network, network.Peer("Org1", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","~local","foo"]}`, 0, false, "bar6")
+
+		By("expecting a failed query return from peer0.Org2")
+		query(network, network.Peer("Org2", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","~local","foo"]}`, 1, true, "private data matching public hash version is not available")
+
+		By("expecting a failed query return from peer1.Org2")
+		query(network, network.Peer("Org2", "peer1"), "testchannel", "pvtdatacc", `{"Args":["get","~local","foo"]}`, 1, true, "private data matching public hash version is not available")
+
+		By("expecting a failed query return from peer0.Org3")
+		query(network, network.Peer("Org3", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","~local","foo"]}`, 1, true, "private data matching public hash version is not available")
+
+		By("expecting a successful query return from peer0.Org1")
+		query(network, network.Peer("Org1", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","collectionMarbles","foo"]}`, 0, false, "bar7")
+
+		By("expecting a successful query return from peer0.Org2")
+		query(network, network.Peer("Org2", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","collectionMarbles","foo"]}`, 0, false, "bar7")
+
+		By("expecting a successful query return from peer1.Org2")
+		query(network, network.Peer("Org2", "peer1"), "testchannel", "pvtdatacc", `{"Args":["get","collectionMarbles","foo"]}`, 0, false, "bar7")
+
+		By("expecting a failed query return from peer0.Org3")
+		query(network, network.Peer("Org3", "peer0"), "testchannel", "pvtdatacc", `{"Args":["get","collectionMarbles","foo"]}`, 1, true, "private data matching public hash version is not available")
 	})
 
 	It("Using Local Collections on a chaincode that has no collections defined", func() {
