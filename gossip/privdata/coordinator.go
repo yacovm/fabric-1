@@ -7,13 +7,18 @@ SPDX-License-Identifier: Apache-2.0
 package privdata
 
 import (
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	protostransientstore "github.com/hyperledger/fabric-protos-go/transientstore"
+	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/channelconfig"
+	commonutil "github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/committer"
 	"github.com/hyperledger/fabric/core/committer/txvalidator"
 	"github.com/hyperledger/fabric/core/common/privdata"
@@ -23,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric/gossip/metrics"
 	privdatacommon "github.com/hyperledger/fabric/gossip/privdata/common"
 	"github.com/hyperledger/fabric/gossip/util"
+	"github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -143,6 +149,197 @@ func NewCoordinator(support Support, store *transientstore.Store, selfSignedData
 	}
 }
 
+type txns []string
+type blockData [][]byte
+type blockConsumer func(seqInBlock uint64, chdr *common.ChannelHeader, txRWSet *rwsetutil.TxRwSet, endorsers []*peer.Endorsement) error
+
+func (data blockData) forEachTxn(txsFilter txValidationFlags, consumer blockConsumer) (txns, error) {
+	var txList []string
+	for seqInBlock, envBytes := range data {
+		env, err := protoutil.GetEnvelopeFromBlock(envBytes)
+		if err != nil {
+			logger.Warning("Invalid envelope:", err)
+			continue
+		}
+
+		payload, err := protoutil.UnmarshalPayload(env.Payload)
+		if err != nil {
+			logger.Warning("Invalid payload:", err)
+			continue
+		}
+
+		chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+		if err != nil {
+			logger.Warning("Invalid channel header:", err)
+			continue
+		}
+
+		if chdr.Type != int32(common.HeaderType_ENDORSER_TRANSACTION) {
+			continue
+		}
+
+		txList = append(txList, chdr.TxId)
+
+		if txsFilter[seqInBlock] != uint8(peer.TxValidationCode_VALID) {
+			logger.Debug("Skipping Tx", seqInBlock, "because it's invalid. Status is", txsFilter[seqInBlock])
+			continue
+		}
+
+		respPayload, err := protoutil.GetActionFromEnvelope(envBytes)
+		if err != nil {
+			logger.Warning("Failed obtaining action from envelope", err)
+			continue
+		}
+
+		tx, err := protoutil.UnmarshalTransaction(payload.Data)
+		if err != nil {
+			logger.Warning("Invalid transaction in payload data for tx ", chdr.TxId, ":", err)
+			continue
+		}
+
+		ccActionPayload, err := protoutil.UnmarshalChaincodeActionPayload(tx.Actions[0].Payload)
+		if err != nil {
+			logger.Warning("Invalid chaincode action in payload for tx", chdr.TxId, ":", err)
+			continue
+		}
+
+		if ccActionPayload.Action == nil {
+			logger.Warning("Action in ChaincodeActionPayload for", chdr.TxId, "is nil")
+			continue
+		}
+
+		txRWSet := &rwsetutil.TxRwSet{}
+		if err = txRWSet.FromProtoBytes(respPayload.Results); err != nil {
+			logger.Warning("Failed obtaining TxRwSet from ChaincodeAction's results", err)
+			continue
+		}
+		err = consumer(uint64(seqInBlock), chdr, txRWSet, ccActionPayload.Action.Endorsements)
+		if err != nil {
+			return txList, err
+		}
+	}
+	return txList, nil
+}
+
+type localCollectionEnhancer struct {
+	privateDataSets util.PvtDataCollections
+	c               *coordinator
+}
+
+func txPvtDataAtPos(dataset util.PvtDataCollections, pos uint64) (*ledger.TxPvtData, util.PvtDataCollections) {
+	var pvtDataToRet *ledger.TxPvtData
+	for i, pvtData := range dataset {
+		if pvtData.SeqInBlock == pos {
+			pvtDataToRet = pvtData
+			return pvtDataToRet, dataset
+		} else if pvtData.SeqInBlock > pos {
+			pvtDataToRet = &ledger.TxPvtData{
+				SeqInBlock: pos,
+				WriteSet: &rwset.TxPvtReadWriteSet{
+					DataModel: rwset.TxReadWriteSet_KV,
+				},
+			}
+			dataset = append(dataset[:i], append([]*ledger.TxPvtData{pvtDataToRet}, dataset[i:]...)...)
+			return pvtDataToRet, dataset
+		}
+	}
+
+	pvtDataToRet = &ledger.TxPvtData{
+		SeqInBlock: uint64(pos),
+		WriteSet: &rwset.TxPvtReadWriteSet{
+			DataModel: rwset.TxReadWriteSet_KV,
+		},
+	}
+	dataset = append(dataset, pvtDataToRet)
+	return pvtDataToRet, dataset
+}
+
+func (l *localCollectionEnhancer) inspect(seqInBlock uint64, chdr *common.ChannelHeader, txRWSet *rwsetutil.TxRwSet, endorsers []*peer.Endorsement) error {
+	for _, rws := range txRWSet.NsRwSets {
+		for _, ns := range rws.CollHashedRwSets {
+			if ns.CollectionName != "~local" {
+				continue
+			}
+
+			t := ledger.PvtNsCollFilter{
+				rws.NameSpace: ledger.PvtCollFilter{"~local": true},
+			}
+
+			logger.Debugf("GetTxPvtRWSetByTxid for %s %+v", chdr.TxId, t)
+
+			iterator, err := l.c.store.GetTxPvtRWSetByTxid(chdr.TxId, t)
+			if err != nil {
+				logger.Warning("Failed obtaining iterator from transient store:", err)
+				return err
+			}
+			defer iterator.Close()
+
+			for {
+				res, err := iterator.Next()
+				if err != nil {
+					logger.Error("Failed iterating:", err)
+					break
+				}
+
+				logger.Debugf("GetTxPvtRWSetByTxid got %+v", res)
+
+				if res == nil {
+					// End of iteration
+					break
+				}
+				if res.PvtSimulationResultsWithConfig == nil {
+					logger.Warning("Resultset's PvtSimulationResultsWithConfig for", chdr.TxId, "is nil, skipping")
+					continue
+				}
+				simRes := res.PvtSimulationResultsWithConfig
+				if simRes.PvtRwset == nil {
+					logger.Warning("The PvtRwset of PvtSimulationResultsWithConfig for", chdr.TxId, "is nil, skipping")
+					continue
+				}
+
+				var elem *ledger.TxPvtData
+				elem, l.privateDataSets = txPvtDataAtPos(l.privateDataSets, seqInBlock)
+				logger.Infof("Adding local collection data for txid %s pos %d", chdr.TxId, seqInBlock)
+				elem.WriteSet.NsPvtRwset = append(elem.WriteSet.NsPvtRwset, res.PvtSimulationResultsWithConfig.PvtRwset.NsPvtRwset...)
+			} // iterating over the TxPvtRWSet results
+		}
+	}
+
+	return nil
+}
+
+func (c *coordinator) addLocalCollectionData(block *common.Block, privateDataSets util.PvtDataCollections) (util.PvtDataCollections, error) {
+	logger.Debugf("addLocalCollectionData starts")
+
+	for _, pds := range privateDataSets {
+		for _, rws := range pds.WriteSet.NsPvtRwset {
+			logger.Debugf("addLocalCollectionData existing: %+v", rws.CollectionPvtRwset)
+		}
+	}
+
+	pvtData := &localCollectionEnhancer{
+		privateDataSets: privateDataSets,
+		c:               c,
+	}
+
+	if block.Metadata == nil || len(block.Metadata.Metadata) <= int(common.BlockMetadataIndex_TRANSACTIONS_FILTER) {
+		return nil, errors.New("Block.Metadata is nil or Block.Metadata lacks a Tx filter bitmap")
+	}
+	txsFilter := txValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	if len(txsFilter) != len(block.Data.Data) {
+		return nil, errors.Errorf("Block data size(%d) is different from Tx filter size(%d)", len(block.Data.Data), len(txsFilter))
+	}
+
+	data := blockData(block.Data.Data)
+
+	_, err := data.forEachTxn(txsFilter, pvtData.inspect)
+	if err != nil {
+		return nil, err
+	}
+
+	return pvtData.privateDataSets, nil
+}
+
 // StoreBlock stores block with private data into the ledger
 func (c *coordinator) StoreBlock(block *common.Block, privateDataSets util.PvtDataCollections) error {
 	if block.Data == nil {
@@ -168,6 +365,13 @@ func (c *coordinator) StoreBlock(block *common.Block, privateDataSets util.PvtDa
 		Block:          block,
 		PvtData:        make(ledger.TxPvtDataMap),
 		MissingPvtData: make(ledger.TxMissingPvtDataMap),
+	}
+
+	// lookup everything we've got from the transient store for local collections
+	privateDataSets, err = c.addLocalCollectionData(block, privateDataSets)
+	if err != nil {
+		logger.Errorf("addLocalCollectionData failed: %+v", err)
+		return err
 	}
 
 	exist, err := c.DoesPvtDataInfoExistInLedger(block.Header.Number)
@@ -199,7 +403,9 @@ func (c *coordinator) StoreBlock(block *common.Block, privateDataSets util.PvtDa
 		fetcher:                                 c.Fetcher,
 		idDeserializerFactory:                   c.idDeserializerFactory,
 	}
-	pvtdataToRetrieve, err := c.getTxPvtdataInfoFromBlock(block)
+
+	// getTxPvtdataInfoFromBlock retrieves the collection policies already
+	pvtdataToRetrieve, err := c.getTxPvtdataInfoFromBlock(block, privateDataSets)
 	if err != nil {
 		logger.Warningf("Failed to get private data info from block: %s", err)
 		return err
@@ -283,9 +489,33 @@ func (c *coordinator) GetPvtDataAndBlockByNum(seqNum uint64, peerAuthInfo protou
 	return blockAndPvtData.Block, seqs2Namespaces.asPrivateData(), nil
 }
 
+func buildAvailablePreimageMap(privateDataSets util.PvtDataCollections, txID string, seqInBlock uint64) map[rwSetKey]struct{} {
+	m := make(map[rwSetKey]struct{})
+
+	for _, txPvtdata := range privateDataSets {
+		if txPvtdata.SeqInBlock != seqInBlock {
+			continue
+		}
+
+		for _, ns := range txPvtdata.WriteSet.NsPvtRwset {
+			for _, col := range ns.CollectionPvtRwset {
+				m[rwSetKey{
+					txID:       txID,
+					seqInBlock: txPvtdata.SeqInBlock,
+					collection: col.CollectionName,
+					namespace:  ns.Namespace,
+					hash:       hex.EncodeToString(commonutil.ComputeSHA256(col.Rwset)),
+				}] = struct{}{}
+			}
+		}
+	}
+
+	return m
+}
+
 // getTxPvtdataInfoFromBlock parses the block transactions and returns the list of private data items in the block.
 // Note that this peer's eligibility for the private data is not checked here.
-func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block) ([]*ledger.TxPvtdataInfo, error) {
+func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block, privateDataSets util.PvtDataCollections) ([]*ledger.TxPvtdataInfo, error) {
 	txPvtdataItemsFromBlock := []*ledger.TxPvtdataInfo{}
 
 	if block.Metadata == nil || len(block.Metadata.Metadata) <= int(common.BlockMetadataIndex_TRANSACTIONS_FILTER) {
@@ -304,6 +534,8 @@ func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block) ([]*ledger.
 			continue
 		}
 
+		colMap := buildAvailablePreimageMap(privateDataSets, txInfo.txID, uint64(seqInBlock))
+
 		colPvtdataInfo := []*ledger.CollectionPvtdataInfo{}
 		for _, ns := range txInfo.txRWSet.NsRwSets {
 			for _, hashedCollection := range ns.CollHashedRwSets {
@@ -317,10 +549,45 @@ func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block) ([]*ledger.
 					Collection: hashedCollection.CollectionName,
 				}
 
-				colConfig, err := c.CollectionStore.RetrieveCollectionConfig(cc)
-				if err != nil {
-					logger.Warningf("Failed to retrieve collection config for collection criteria [%#v]: %s", cc, err)
-					return nil, err
+				var colConfig *peer.StaticCollectionConfig
+				if cc.Collection == "~local" {
+					msp := mgmt.GetLocalMSP(factory.GetDefault())
+					mspid, err := msp.GetIdentifier()
+					if err != nil {
+						panic(fmt.Sprintf("GetIdentifier failed with '%s'", err))
+					}
+
+					colConfig = &peer.StaticCollectionConfig{
+						Name: "~local",
+					}
+
+					if _, in := colMap[rwSetKey{
+						txID:       txInfo.txID,
+						seqInBlock: uint64(seqInBlock),
+						collection: cc.Collection,
+						namespace:  ns.NameSpace,
+						hash:       hex.EncodeToString(hashedCollection.PvtRwSetHash),
+					}]; in {
+						logger.Infof("preimage present, returning accept policy")
+						colConfig.MemberOrgsPolicy = &peer.CollectionPolicyConfig{
+							Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
+								SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
+							},
+						}
+					} else {
+						logger.Infof("preimage absent, returning reject policy")
+						colConfig.MemberOrgsPolicy = &peer.CollectionPolicyConfig{
+							Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
+								SignaturePolicy: cauthdsl.RejectAllPolicy,
+							},
+						}
+					}
+				} else {
+					colConfig, err = c.CollectionStore.RetrieveCollectionConfig(cc)
+					if err != nil {
+						logger.Warningf("Failed to retrieve collection config for collection criteria [%#v]: %s", cc, err)
+						return nil, err
+					}
 				}
 				col := &ledger.CollectionPvtdataInfo{
 					Namespace:        ns.NameSpace,

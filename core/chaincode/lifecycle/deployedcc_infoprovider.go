@@ -14,11 +14,14 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric-protos-go/msp"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	pb "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/util"
 	validationState "github.com/hyperledger/fabric/core/handlers/validation/api/state"
 	"github.com/hyperledger/fabric/core/ledger"
+	"github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
 
 	"github.com/pkg/errors"
@@ -105,11 +108,38 @@ var ImplicitCollectionMatcher = regexp.MustCompile("^" + ImplicitCollectionNameF
 // AllCollectionsConfigPkg implements function in interface ledger.DeployedChaincodeInfoProvider
 // this implementation returns a combined collection config pkg that contains both explicit and implicit collections
 func (vc *ValidatorCommitter) AllCollectionsConfigPkg(channelName, chaincodeName string, qe ledger.SimpleQueryExecutor) (*pb.CollectionConfigPackage, error) {
+	msp := mgmt.GetLocalMSP(factory.GetDefault())
+	mspid, err := msp.GetIdentifier()
+	if err != nil {
+		panic(fmt.Sprintf("GetIdentifier failed with '%s'", err))
+	}
+
 	chaincodeInfo, err := vc.ChaincodeInfo(channelName, chaincodeName, qe)
 	if err != nil {
 		return nil, err
 	}
 	explicitCollectionConfigPkg := chaincodeInfo.ExplicitCollectionConfigPkg
+
+	if explicitCollectionConfigPkg == nil {
+		explicitCollectionConfigPkg = &peer.CollectionConfigPackage{}
+	}
+
+	if explicitCollectionConfigPkg.Config == nil {
+		explicitCollectionConfigPkg.Config = []*peer.CollectionConfig{}
+	}
+
+	explicitCollectionConfigPkg.Config = append(explicitCollectionConfigPkg.Config, &peer.CollectionConfig{
+		Payload: &peer.CollectionConfig_StaticCollectionConfig{
+			StaticCollectionConfig: &peer.StaticCollectionConfig{
+				Name: "~local",
+				MemberOrgsPolicy: &peer.CollectionPolicyConfig{
+					Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
+						SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
+					},
+				},
+			},
+		},
+	})
 
 	if chaincodeInfo.IsLegacy {
 		return explicitCollectionConfigPkg, nil
@@ -343,6 +373,10 @@ func (vc *ValidatorCommitter) CollectionValidationInfo(channelID, chaincodeName,
 		// that a missing chaincode is a validation error.  But, for now
 		// this is required to make the passthrough work.
 		return nil, nil, nil
+	}
+
+	if collectionName == "~local" {
+		return definedChaincode.ValidationInfo.ValidationParameter, nil, nil
 	}
 
 	matches := ImplicitCollectionMatcher.FindStringSubmatch(collectionName)

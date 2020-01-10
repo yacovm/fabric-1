@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package pvtdatapolicy
 
 import (
+	"fmt"
 	"math"
 	"sync"
 
@@ -60,6 +61,7 @@ func (p *LSCCBasedBTLPolicy) GetBTL(namesapce string, collection string) (uint64
 			return 0, err
 		}
 		if collConfig == nil {
+			fmt.Printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX = sono qui\n")
 			return 0, privdata.NoSuchCollectionError{Namespace: namesapce, Collection: collection}
 		}
 		btlConfigured := collConfig.BlockToLive
