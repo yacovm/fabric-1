@@ -331,7 +331,7 @@ func (msp *idemixmsp) Validate(id Identity) error {
 }
 
 func (id *idemixidentity) verifyProof() error {
-	// Verify signature
+	// Verify signature, first all attributes hidden
 	valid, err := id.msp.csp.Verify(
 		id.msp.ipk,
 		id.associationProof,
@@ -339,8 +339,8 @@ func (id *idemixidentity) verifyProof() error {
 		&bccsp.IdemixSignerOpts{
 			RevocationPublicKey: id.msp.revocationPK,
 			Attributes: []bccsp.IdemixAttribute{
-				{Type: bccsp.IdemixBytesAttribute, Value: []byte(id.OU.OrganizationalUnitIdentifier)},
-				{Type: bccsp.IdemixIntAttribute, Value: getIdemixRoleFromMSPRole(id.Role)},
+				{Type: bccsp.IdemixHiddenAttribute},
+				{Type: bccsp.IdemixHiddenAttribute},
 				{Type: bccsp.IdemixHiddenAttribute},
 				{Type: bccsp.IdemixHiddenAttribute},
 			},
@@ -348,6 +348,25 @@ func (id *idemixidentity) verifyProof() error {
 			Epoch:   id.msp.epoch,
 		},
 	)
+	if err != nil || !valid {
+		// THen with some attributes disclosed
+		valid, err = id.msp.csp.Verify(
+			id.msp.ipk,
+			id.associationProof,
+			nil,
+			&bccsp.IdemixSignerOpts{
+				RevocationPublicKey: id.msp.revocationPK,
+				Attributes: []bccsp.IdemixAttribute{
+					{Type: bccsp.IdemixBytesAttribute, Value: []byte(id.OU.OrganizationalUnitIdentifier)},
+					{Type: bccsp.IdemixIntAttribute, Value: getIdemixRoleFromMSPRole(id.Role)},
+					{Type: bccsp.IdemixHiddenAttribute},
+					{Type: bccsp.IdemixHiddenAttribute},
+				},
+				RhIndex: rhIndex,
+				Epoch:   id.msp.epoch,
+			},
+		)
+	}
 	if err == nil && !valid {
 		panic("unexpected condition, an error should be returned for an invalid signature")
 	}
