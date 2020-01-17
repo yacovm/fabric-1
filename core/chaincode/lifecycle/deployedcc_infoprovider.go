@@ -131,7 +131,7 @@ func (vc *ValidatorCommitter) AllCollectionsConfigPkg(channelName, chaincodeName
 	explicitCollectionConfigPkg.Config = append(explicitCollectionConfigPkg.Config, &peer.CollectionConfig{
 		Payload: &peer.CollectionConfig_StaticCollectionConfig{
 			StaticCollectionConfig: &peer.StaticCollectionConfig{
-				Name: "~local",
+				Name: "+local",
 				MemberOrgsPolicy: &peer.CollectionPolicyConfig{
 					Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
 						SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
@@ -375,7 +375,7 @@ func (vc *ValidatorCommitter) CollectionValidationInfo(channelID, chaincodeName,
 		return nil, nil, nil
 	}
 
-	if collectionName == "~local" {
+	if collectionName == "+local" {
 		return definedChaincode.ValidationInfo.ValidationParameter, nil, nil
 	}
 

@@ -137,7 +137,7 @@ func (c *SimpleCollectionStore) RetrieveCollectionConfig(cc CollectionCriteria) 
 func (c *SimpleCollectionStore) retrieveCollectionConfig(cc CollectionCriteria, qe ledger.QueryExecutor) (*peer.StaticCollectionConfig, error) {
 	var err error
 
-	if cc.Collection == "~local" {
+	if cc.Collection == "+local" {
 		msp := mgmt.GetLocalMSP(factory.GetDefault())
 		mspid, err := msp.GetIdentifier()
 		if err != nil {
@@ -145,7 +145,7 @@ func (c *SimpleCollectionStore) retrieveCollectionConfig(cc CollectionCriteria, 
 		}
 
 		return &pb.StaticCollectionConfig{
-			Name: "~local",
+			Name: "+local",
 			MemberOrgsPolicy: &pb.CollectionPolicyConfig{
 				Payload: &pb.CollectionPolicyConfig_SignaturePolicy{
 					SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),

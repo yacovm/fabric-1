@@ -257,12 +257,12 @@ func txPvtDataAtPos(dataset util.PvtDataCollections, pos uint64) (*ledger.TxPvtD
 func (l *localCollectionEnhancer) inspect(seqInBlock uint64, chdr *common.ChannelHeader, txRWSet *rwsetutil.TxRwSet, endorsers []*peer.Endorsement) error {
 	for _, rws := range txRWSet.NsRwSets {
 		for _, ns := range rws.CollHashedRwSets {
-			if ns.CollectionName != "~local" {
+			if ns.CollectionName != "+local" {
 				continue
 			}
 
 			t := ledger.PvtNsCollFilter{
-				rws.NameSpace: ledger.PvtCollFilter{"~local": true},
+				rws.NameSpace: ledger.PvtCollFilter{"+local": true},
 			}
 
 			logger.Debugf("GetTxPvtRWSetByTxid for %s %+v", chdr.TxId, t)
@@ -550,7 +550,7 @@ func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block, privateData
 				}
 
 				var colConfig *peer.StaticCollectionConfig
-				if cc.Collection == "~local" {
+				if cc.Collection == "+local" {
 					msp := mgmt.GetLocalMSP(factory.GetDefault())
 					mspid, err := msp.GetIdentifier()
 					if err != nil {
@@ -558,7 +558,7 @@ func (c *coordinator) getTxPvtdataInfoFromBlock(block *common.Block, privateData
 					}
 
 					colConfig = &peer.StaticCollectionConfig{
-						Name: "~local",
+						Name: "+local",
 					}
 
 					if _, in := colMap[rwSetKey{

@@ -655,7 +655,7 @@ type collectionInfoRetriever struct {
 }
 
 func (r *collectionInfoRetriever) CollectionInfo(chaincodeName, collectionName string) (*peer.StaticCollectionConfig, error) {
-	if collectionName == "~local" {
+	if collectionName == "+local" {
 		msp := mgmt.GetLocalMSP(factory.GetDefault())
 		mspid, err := msp.GetIdentifier()
 		if err != nil {
@@ -663,7 +663,7 @@ func (r *collectionInfoRetriever) CollectionInfo(chaincodeName, collectionName s
 		}
 
 		return &peer.StaticCollectionConfig{
-			Name: "~local",
+			Name: "+local",
 			MemberOrgsPolicy: &peer.CollectionPolicyConfig{
 				Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
 					SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
