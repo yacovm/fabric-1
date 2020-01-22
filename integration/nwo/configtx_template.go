@@ -168,8 +168,8 @@ Profiles:{{ range .Profiles }}
           Type: ImplicitMeta
           Rule: MAJORITY Admins
         Issuers:
-          Type: ImplicitMeta
-          Rule: ANY Writers
+          Type: Signature
+          Rule: "OR('Org1MSP.member')"
         LifecycleEndorsement:
           Type: ImplicitMeta
           Rule: "MAJORITY Endorsement"
