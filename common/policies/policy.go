@@ -59,6 +59,9 @@ const (
 
 	// ChannelOrdererReaders is the label for the channel's orderer readers policy
 	ChannelOrdererReaders = PathSeparator + ChannelPrefix + PathSeparator + OrdererPrefix + PathSeparator + "Readers"
+
+	// ChannelTokenIssuers is the label for the channel's token issuers policy
+	ChannelTokenIssuers = PathSeparator + ChannelPrefix + PathSeparator + ApplicationPrefix + PathSeparator + "Issuers"
 )
 
 var logger = flogging.MustGetLogger("policies")
