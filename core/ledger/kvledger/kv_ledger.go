@@ -14,6 +14,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/flogging"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/util"
@@ -28,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/ledgerstorage"
 	"github.com/hyperledger/fabric/core/ledger/pvtdatapolicy"
 	lutil "github.com/hyperledger/fabric/core/ledger/util"
+	"github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -652,6 +655,23 @@ type collectionInfoRetriever struct {
 }
 
 func (r *collectionInfoRetriever) CollectionInfo(chaincodeName, collectionName string) (*peer.StaticCollectionConfig, error) {
+	if collectionName == "+local" {
+		msp := mgmt.GetLocalMSP(factory.GetDefault())
+		mspid, err := msp.GetIdentifier()
+		if err != nil {
+			panic(fmt.Sprintf("GetIdentifier failed with '%s'", err))
+		}
+
+		return &peer.StaticCollectionConfig{
+			Name: "+local",
+			MemberOrgsPolicy: &peer.CollectionPolicyConfig{
+				Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
+					SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
+				},
+			},
+		}, nil
+	}
+
 	qe, err := r.ledger.NewQueryExecutor()
 	if err != nil {
 		return nil, err

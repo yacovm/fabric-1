@@ -12,8 +12,11 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	pb "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/msp/mgmt"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
@@ -133,6 +136,24 @@ func (c *SimpleCollectionStore) RetrieveCollectionConfig(cc CollectionCriteria) 
 
 func (c *SimpleCollectionStore) retrieveCollectionConfig(cc CollectionCriteria, qe ledger.QueryExecutor) (*peer.StaticCollectionConfig, error) {
 	var err error
+
+	if cc.Collection == "+local" {
+		msp := mgmt.GetLocalMSP(factory.GetDefault())
+		mspid, err := msp.GetIdentifier()
+		if err != nil {
+			panic(fmt.Sprintf("GetIdentifier failed with '%s'", err))
+		}
+
+		return &pb.StaticCollectionConfig{
+			Name: "+local",
+			MemberOrgsPolicy: &pb.CollectionPolicyConfig{
+				Payload: &pb.CollectionPolicyConfig_SignaturePolicy{
+					SignaturePolicy: cauthdsl.SignedByAnyMember([]string{mspid}),
+				},
+			},
+		}, nil
+	}
+
 	if qe == nil {
 		qe, err = c.qeFactory.NewQueryExecutor()
 		if err != nil {
